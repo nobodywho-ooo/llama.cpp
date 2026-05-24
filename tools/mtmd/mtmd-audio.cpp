@@ -12,6 +12,17 @@
 
 // some of the code here is copied from whisper.cpp
 
+// wasm32-emscripten has no pthread support in our build; mtmd-audio's
+// log_mel_spectrogram spawns std::thread workers when n_threads > 1
+// and traps on pthread_create. Force single-thread mel computation on
+// that target. The audio preprocess is one-off per audio chunk;
+// single-threaded mel is acceptable in interactive flows.
+#ifdef __EMSCRIPTEN__
+#define MTMD_AUDIO_N_THREADS 1
+#else
+#define MTMD_AUDIO_N_THREADS 4
+#endif
+
 constexpr bool DEBUG = false;
 
 void mtmd_audio_cache::fill_sin_cos_table(uint32_t n) {
@@ -568,7 +579,7 @@ bool mtmd_audio_preprocessor_whisper::preprocess(const float *                 s
 
     mtmd_audio_mel out_full;
     bool           ok = log_mel_spectrogram(samples, n_samples,
-                                            4,  // n_threads
+                                            MTMD_AUDIO_N_THREADS,  // n_threads
                                             params, cache, out_full);
     if (!ok) {
         return false;
@@ -640,7 +651,7 @@ bool mtmd_audio_preprocessor_conformer::preprocess(const float *                
 
     mtmd_audio_mel out_full;
     bool           ok = log_mel_spectrogram(samples, n_samples,
-                                            4,  // n_threads
+                                            MTMD_AUDIO_N_THREADS,  // n_threads
                                             params, cache, out_full);
     if (!ok) {
         return false;
@@ -717,7 +728,7 @@ bool mtmd_audio_preprocessor_gemma4a::preprocess(const float *                 s
         std::copy(chunk_ptr, chunk_ptr + chunk_len, padded_samples.data() + pad_left);
 
         mtmd_audio_mel out_chunk;
-        bool ok = log_mel_spectrogram(padded_samples.data(), padded_samples.size(), 4, params, cache, out_chunk);
+        bool ok = log_mel_spectrogram(padded_samples.data(), padded_samples.size(), MTMD_AUDIO_N_THREADS, params, cache, out_chunk);
         if (!ok) {
             return false;
         }
